@@ -1,0 +1,60 @@
+{
+  "name": "openapi-analyzer-mcp",
+  "version": "1.0.0",
+  "description": "A powerful Model Context Protocol (MCP) server for analyzing OpenAPI specifications with Claude Desktop and other LLM clients",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "openapi-analyzer-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.13",
+    "@vitest/coverage-v8": "^3.2.4",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "mcp",
+    "openapi",
+    "api",
+    "analysis",
+    "claude",
+    "llm",
+    "model-context-protocol",
+    "swagger",
+    "api-documentation",
+    "schema-analysis",
+    "endpoint-discovery"
+  ],
+  "author": "Suresh Sivasankaran <hello@sureshkumar.dev>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sureshkumars/openapi-analyzer-mcp.git"
+  },
+  "homepage": "https://github.com/sureshkumars/openapi-analyzer-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/sureshkumars/openapi-analyzer-mcp/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
