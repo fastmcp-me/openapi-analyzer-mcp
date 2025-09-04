@@ -155,10 +155,10 @@ describe('MCP Server Configuration', () => {
   });
 
   it('should validate environment requirements', async () => {
-    // Test that validateSpecsFolder is exported from the module
-    const { validateSpecsFolder } = await import('../src/index.js');
-    expect(validateSpecsFolder).toBeDefined();
-    expect(typeof validateSpecsFolder).toBe('function');
+    // Test that validateConfiguration is exported from the module
+    const { validateConfiguration } = await import('../src/index.js');
+    expect(validateConfiguration).toBeDefined();
+    expect(typeof validateConfiguration).toBe('function');
   });
 
   it('should export OpenAPIAnalyzer class', async () => {
@@ -178,7 +178,7 @@ describe('MCP Server Configuration', () => {
     
     // Key exports should exist
     expect(module.OpenAPIAnalyzer).toBeDefined();
-    expect(module.validateSpecsFolder).toBeDefined();
+    expect(module.validateConfiguration).toBeDefined();
     
     // These would be type-only imports in real usage, but we validate the structure
     const testApiSummary: any = {

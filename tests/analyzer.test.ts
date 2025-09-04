@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs/promises';
-import { 
-  OpenAPIAnalyzer, 
-  type ApiSummary,
-  type SearchResult,
-  type ApiStats,
-  type Inconsistency,
-  type SchemaComparison
+import type { 
+  ApiSummary,
+  SearchResult,
+  ApiStats,
+  Inconsistency,
+  SchemaComparison
 } from '../src/index';
 
 // Mock fs module
@@ -20,8 +19,14 @@ vi.mock('@apidevtools/swagger-parser', () => ({
   }
 }));
 
+// Mock fetch for remote URL testing
+global.fetch = vi.fn();
+const mockedFetch = vi.mocked(fetch);
+
 import SwaggerParser from '@apidevtools/swagger-parser';
 const mockedSwaggerParser = vi.mocked(SwaggerParser);
+
+import { OpenAPIAnalyzer } from '../src/index';
 
 // Mock console methods to avoid cluttering test output
 const mockConsoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -30,19 +35,19 @@ describe('OpenAPIAnalyzer', () => {
   let analyzer: OpenAPIAnalyzer;
 
   beforeEach(() => {
-    analyzer = new OpenAPIAnalyzer();
     vi.clearAllMocks();
     mockConsoleError.mockClear();
     mockedSwaggerParser.parse.mockClear();
-    process.env.OPENAPI_SPECS_FOLDER = '/test/folder';
-  });
-
-  afterEach(() => {
-    delete process.env.OPENAPI_SPECS_FOLDER;
+    mockedFetch.mockClear();
+    
+    // Create default analyzer with local folder for tests
+    analyzer = new OpenAPIAnalyzer({
+      specsFolder: '/test/folder'
+    });
   });
 
   describe('loadSpecs', () => {
-    it('should load valid OpenAPI specifications', async () => {
+    it('should load valid OpenAPI specifications from local folder', async () => {
       const sampleApiSpec = {
         openapi: '3.0.0',
         info: { title: 'Test API', version: '1.0.0' },
@@ -53,6 +58,7 @@ describe('OpenAPIAnalyzer', () => {
         }
       };
 
+      // Mock local folder operations
       mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as any);
       mockedFs.access.mockResolvedValue();
       mockedFs.readdir.mockResolvedValue(['sample-api.json', 'other-file.txt'] as any);
@@ -555,32 +561,44 @@ describe('OpenAPIAnalyzer', () => {
   });
 
   describe('OpenAPIAnalyzer validation', () => {
-    it('should throw error for missing environment variable', async () => {
-      delete process.env.OPENAPI_SPECS_FOLDER;
+    it('should not load anything when no configuration is provided', async () => {
+      analyzer = new OpenAPIAnalyzer(); // No constructor options
       
-      await expect(analyzer.loadSpecs()).rejects.toThrow();
+      await analyzer.loadSpecs();
+      
+      const specs = analyzer.listAllSpecs();
+      expect(specs).toHaveLength(0);
     });
 
-    it('should throw error for non-existent directory', async () => {
-      process.env.OPENAPI_SPECS_FOLDER = '/nonexistent';
-      mockedFs.stat.mockRejectedValue(new Error('ENOENT: no such file or directory'));
+    it('should handle non-existent directory gracefully', async () => {
+      analyzer = new OpenAPIAnalyzer({ specsFolder: '/nonexistent' });
+      mockedFs.stat.mockRejectedValue(Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' }));
       
-      await expect(analyzer.loadSpecs()).rejects.toThrow();
+      await analyzer.loadSpecs();
+      
+      const specs = analyzer.listAllSpecs();
+      expect(specs).toHaveLength(0);
     });
 
-    it('should throw error for non-directory path', async () => {
-      process.env.OPENAPI_SPECS_FOLDER = '/some/file.txt';
+    it('should handle non-directory path gracefully', async () => {
+      analyzer = new OpenAPIAnalyzer({ specsFolder: '/some/file.txt' });
       mockedFs.stat.mockResolvedValue({ isDirectory: () => false } as any);
       
-      await expect(analyzer.loadSpecs()).rejects.toThrow();
+      await analyzer.loadSpecs();
+      
+      const specs = analyzer.listAllSpecs();
+      expect(specs).toHaveLength(0);
     });
 
-    it('should throw error for permission denied', async () => {
-      process.env.OPENAPI_SPECS_FOLDER = '/no/permission';
+    it('should handle permission denied gracefully', async () => {
+      analyzer = new OpenAPIAnalyzer({ specsFolder: '/no/permission' });
       mockedFs.stat.mockResolvedValue({ isDirectory: () => true } as any);
-      mockedFs.access.mockRejectedValue(new Error('EACCES: permission denied'));
+      mockedFs.access.mockRejectedValue(Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }));
       
-      await expect(analyzer.loadSpecs()).rejects.toThrow();
+      await analyzer.loadSpecs();
+      
+      const specs = analyzer.listAllSpecs();
+      expect(specs).toHaveLength(0);
     });
   });
 });

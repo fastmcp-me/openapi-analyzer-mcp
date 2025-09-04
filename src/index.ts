@@ -18,27 +18,40 @@ import SwaggerParser from '@apidevtools/swagger-parser';
  * enabling natural language queries about API structures, endpoints, and inconsistencies.
  */
 
-// Configuration
+// Configuration - Priority order: Discovery URL -> Individual URLs -> Local folder
+const DISCOVERY_URL = process.env.OPENAPI_DISCOVERY_URL;
+const SPEC_URLS = process.env.OPENAPI_SPEC_URLS?.split(',').map(url => url.trim()).filter(Boolean) || [];
 const SPECS_FOLDER = process.env.OPENAPI_SPECS_FOLDER;
 
 /**
- * Validate the OPENAPI_SPECS_FOLDER configuration
+ * Validate that at least one configuration source is available
  */
-export async function validateSpecsFolder(): Promise<string> {
-  if (!SPECS_FOLDER) {
-    console.error('❌ Error: OPENAPI_SPECS_FOLDER environment variable is required');
+export async function validateConfiguration(): Promise<void> {
+  if (!DISCOVERY_URL && SPEC_URLS.length === 0 && !SPECS_FOLDER) {
+    console.error('❌ Error: No OpenAPI source configured');
     console.error('');
-    console.error('Please set it to the absolute path of your OpenAPI specifications folder.');
+    console.error('Please set at least one of the following environment variables:');
     console.error('');
-    console.error('Examples:');
-    console.error('  macOS/Linux: OPENAPI_SPECS_FOLDER=/Users/john/my-apis');
-    console.error('  Windows: OPENAPI_SPECS_FOLDER=C:\\Users\\john\\my-apis');
+    console.error('1. OPENAPI_DISCOVERY_URL - URL to API registry (apis.json or custom format)');
+    console.error('   Example: OPENAPI_DISCOVERY_URL=https://docs.company.com/apis.json');
     console.error('');
-    console.error('Claude Desktop configuration example:');
-    console.error('  "env": {');
-    console.error('    "OPENAPI_SPECS_FOLDER": "/absolute/path/to/your/specs"');
-    console.error('  }');
+    console.error('2. OPENAPI_SPEC_URLS - Comma-separated list of OpenAPI spec URLs');
+    console.error('   Example: OPENAPI_SPEC_URLS=https://api.com/v1/spec.yaml,https://api.com/v2/spec.yaml');
+    console.error('');
+    console.error('3. OPENAPI_SPECS_FOLDER - Local folder with OpenAPI files');
+    console.error('   Example: OPENAPI_SPECS_FOLDER=/absolute/path/to/your/specs');
+    console.error('');
+    console.error('Priority order: Discovery URL → Individual URLs → Local folder');
     process.exit(1);
+  }
+}
+
+/**
+ * Validate the local specs folder if it's configured
+ */
+async function validateSpecsFolder(): Promise<string> {
+  if (!SPECS_FOLDER) {
+    throw new Error('SPECS_FOLDER not configured');
   }
 
   try {
@@ -84,6 +97,11 @@ export interface OpenAPISpec {
   info?: OpenAPIInfo;
   paths?: Record<string, any>;
   components?: Record<string, any>;
+  source?: {
+    type: 'local' | 'remote';
+    url?: string;
+    apiInfo?: any;
+  };
 }
 
 export interface ApiSummary {
@@ -132,50 +150,226 @@ export interface SchemaComparison {
   schema: Record<string, any>;
 }
 
+export interface LoadSource {
+  type: 'discovery' | 'urls' | 'folder';
+  url?: string;
+  urls?: string[];
+  folder?: string;
+  count: number;
+  metadata?: any;
+}
+
+export interface ApiDiscovery {
+  name?: string;
+  description?: string;
+  url?: string;
+  apis: Array<{
+    name: string;
+    baseURL?: string;
+    version?: string;
+    description?: string;
+    properties?: Array<{
+      type: string;
+      url: string;
+    }>;
+    spec_url?: string; // Custom format support
+    docs_url?: string; // Custom format support
+    status?: string;   // Custom format support
+    tags?: string[];   // Custom format support
+  }>;
+}
+
 /**
  * Main analyzer class for OpenAPI specifications
  */
 export class OpenAPIAnalyzer {
   private specs: OpenAPISpec[] = [];
+  private loadedSources: LoadSource[] = [];
+  private discoveryUrl?: string;
+  private specUrls: string[] = [];
+  private specsFolder?: string;
+
+  constructor(options?: {
+    discoveryUrl?: string;
+    specUrls?: string[];
+    specsFolder?: string;
+  }) {
+    // Use constructor options for testing, or fall back to environment variables
+    this.discoveryUrl = options?.discoveryUrl || DISCOVERY_URL;
+    this.specUrls = options?.specUrls || SPEC_URLS;
+    this.specsFolder = options?.specsFolder || SPECS_FOLDER;
+  }
 
   /**
-   * Validate the OPENAPI_SPECS_FOLDER configuration for this instance
+   * Load specs from all configured sources: Discovery URL + Individual URLs + Local folder
    */
-  private async validateSpecsFolder(): Promise<string> {
-    const SPECS_FOLDER = process.env.OPENAPI_SPECS_FOLDER;
-    
-    if (!SPECS_FOLDER) {
-      throw new Error('OPENAPI_SPECS_FOLDER environment variable is required');
+  async loadSpecs(): Promise<void> {
+    this.specs = [];
+    this.loadedSources = [];
+    let totalLoaded = 0;
+
+    // Source 1: Discovery URL (apis.json or custom registry)
+    if (this.discoveryUrl) {
+      const beforeCount = this.specs.length;
+      await this.loadFromDiscoveryUrl();
+      const discoveryCount = this.specs.length - beforeCount;
+      if (discoveryCount > 0) {
+        console.error(`✅ Loaded ${discoveryCount} specs from discovery URL`);
+        totalLoaded += discoveryCount;
+      }
     }
 
-    try {
-      const stats = await fs.stat(SPECS_FOLDER);
-      
-      if (!stats.isDirectory()) {
-        throw new Error(`OPENAPI_SPECS_FOLDER is not a directory: ${SPECS_FOLDER}`);
+    // Source 2: Individual URLs
+    if (this.specUrls.length > 0) {
+      const beforeCount = this.specs.length;
+      await this.loadFromUrls();
+      const urlsCount = this.specs.length - beforeCount;
+      if (urlsCount > 0) {
+        console.error(`✅ Loaded ${urlsCount} specs from individual URLs`);
+        totalLoaded += urlsCount;
       }
+    }
 
-      await fs.access(SPECS_FOLDER, fs.constants.R_OK);
-      
-      return SPECS_FOLDER;
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
-        throw new Error(`OPENAPI_SPECS_FOLDER does not exist: ${SPECS_FOLDER}`);
-      } else if (error.code === 'EACCES') {
-        throw new Error(`No read permission for OPENAPI_SPECS_FOLDER: ${SPECS_FOLDER}`);
-      } else {
-        throw error;
+    // Source 3: Local folder
+    if (this.specsFolder) {
+      const beforeCount = this.specs.length;
+      await this.loadFromLocalFolder();
+      const localCount = this.specs.length - beforeCount;
+      if (localCount > 0) {
+        console.error(`✅ Loaded ${localCount} specs from local folder`);
+        totalLoaded += localCount;
       }
+    }
+
+    if (totalLoaded > 0) {
+      console.error(`🎉 Total loaded: ${totalLoaded} OpenAPI specifications from ${this.loadedSources.length} sources`);
+    } else {
+      console.error('⚠️  Warning: No OpenAPI specifications were loaded from any source');
     }
   }
 
   /**
-   * Load all OpenAPI specification files from the configured folder
+   * Load specs from discovery URL (apis.json format or custom)
    */
-  async loadSpecs(): Promise<void> {
-    const validatedFolder = await this.validateSpecsFolder();
-    
+  private async loadFromDiscoveryUrl(): Promise<void> {
     try {
+      console.error(`📡 Fetching API registry from ${this.discoveryUrl}`);
+      
+      const response = await fetch(this.discoveryUrl!);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const registry: ApiDiscovery = await response.json();
+      
+      if (!registry.apis || !Array.isArray(registry.apis)) {
+        throw new Error('Invalid registry format: missing apis array');
+      }
+
+      console.error(`📋 Found ${registry.apis.length} APIs in registry`);
+      
+      // Load each spec from the registry
+      for (const apiInfo of registry.apis) {
+        await this.loadSingleRemoteSpec(apiInfo);
+      }
+
+      this.loadedSources.push({
+        type: 'discovery',
+        url: this.discoveryUrl!,
+        count: this.specs.length,
+        metadata: {
+          name: registry.name,
+          description: registry.description,
+          total_apis: registry.apis.length
+        }
+      });
+
+    } catch (error: any) {
+      console.error(`⚠️  Warning: Failed to load from discovery URL: ${error.message}`);
+      console.error(`    Falling back to individual URLs or local folder`);
+    }
+  }
+
+  /**
+   * Load specs from individual URLs
+   */
+  private async loadFromUrls(): Promise<void> {
+    console.error(`📡 Loading from ${this.specUrls.length} individual URLs`);
+    
+    for (const url of this.specUrls) {
+      await this.loadSingleRemoteSpec({ name: url.split('/').pop() || 'remote-spec', spec_url: url });
+    }
+
+    this.loadedSources.push({
+      type: 'urls',
+      urls: this.specUrls,
+      count: this.specs.length
+    });
+  }
+
+  /**
+   * Load a single remote OpenAPI spec
+   */
+  private async loadSingleRemoteSpec(apiInfo: ApiDiscovery['apis'][0]): Promise<void> {
+    try {
+      // Determine spec URL - support both apis.json format and custom format
+      let specUrl: string | undefined;
+      
+      if (apiInfo.spec_url) {
+        // Custom format
+        specUrl = apiInfo.spec_url;
+      } else if (apiInfo.properties) {
+        // apis.json format - look for Swagger/OpenAPI property
+        const openApiProperty = apiInfo.properties.find(p => 
+          p.type.toLowerCase() === 'swagger' || 
+          p.type.toLowerCase() === 'openapi'
+        );
+        specUrl = openApiProperty?.url;
+      }
+
+      if (!specUrl) {
+        console.error(`⚠️  Skipping ${apiInfo.name}: No OpenAPI spec URL found`);
+        return;
+      }
+
+      const response = await fetch(specUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Use SwaggerParser.parse with URL directly to let it handle the fetching and parsing
+      const spec = await SwaggerParser.parse(specUrl) as Record<string, any>;
+      
+      this.specs.push({
+        filename: apiInfo.name,
+        spec,
+        info: spec.info,
+        paths: spec.paths,
+        components: spec.components,
+        source: {
+          type: 'remote',
+          url: specUrl,
+          apiInfo
+        }
+      });
+
+      const title = spec.info?.title || apiInfo.name;
+      const version = spec.info?.version || apiInfo.version || 'unknown';
+      console.error(`  ✓ Loaded ${apiInfo.name} (${title} v${version})`);
+
+    } catch (error: any) {
+      console.error(`⚠️  Skipping ${apiInfo.name}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Load specs from local folder (existing implementation)
+   */
+  private async loadFromLocalFolder(): Promise<void> {
+    try {
+      const validatedFolder = await this.validateLocalFolder();
+      console.error(`📁 Loading from local folder: ${validatedFolder}`);
+      
       const files = await fs.readdir(validatedFolder);
       const specFiles = files.filter(file => 
         file.endsWith('.json') || 
@@ -185,42 +379,59 @@ export class OpenAPIAnalyzer {
       
       if (specFiles.length === 0) {
         console.error(`⚠️  Warning: No OpenAPI specification files found in ${validatedFolder}`);
-        console.error('');
-        console.error('Please ensure your OpenAPI specifications are:');
-        console.error('  - Saved as .json, .yaml, or .yml files');
-        console.error('  - Located in the specified folder');
-        console.error('');
-        console.error('Supported formats: JSON, YAML, YML');
-      } else {
-        console.error(`📁 Found ${specFiles.length} OpenAPI specification files in ${validatedFolder}`);
+        return;
       }
-      
-      this.specs = [];
+
+      console.error(`📁 Found ${specFiles.length} OpenAPI specification files`);
       
       for (const file of specFiles) {
-        await this.loadSingleSpec(file, validatedFolder);
+        await this.loadSingleLocalSpec(file, validatedFolder);
       }
+
+      this.loadedSources.push({
+        type: 'folder',
+        folder: validatedFolder,
+        count: this.specs.length
+      });
       
-      if (this.specs.length === 0 && specFiles.length > 0) {
-        console.error('❌ No valid OpenAPI specifications were loaded');
-        console.error('');
-        console.error('Common issues:');
-        console.error('  - Files are not valid JSON, YAML, or YML');
-        console.error('  - Files do not contain OpenAPI/Swagger specifications');
-        console.error('  - Files are missing "openapi" or "swagger" fields');
-      } else {
-        console.error(`✅ Successfully loaded ${this.specs.length} OpenAPI specs`);
-      }
     } catch (error: any) {
-      console.error(`❌ Error reading specs folder: ${error.message}`);
-      throw error;
+      console.error(`⚠️  Warning: Failed to load from local folder: ${error.message}`);
     }
   }
 
   /**
-   * Load a single OpenAPI specification file
+   * Validate local specs folder
    */
-  private async loadSingleSpec(filename: string, specsFolder: string): Promise<void> {
+  private async validateLocalFolder(): Promise<string> {
+    if (!this.specsFolder) {
+      throw new Error('SPECS_FOLDER not configured');
+    }
+
+    try {
+      const stats = await fs.stat(this.specsFolder);
+      
+      if (!stats.isDirectory()) {
+        throw new Error(`OPENAPI_SPECS_FOLDER is not a directory: ${this.specsFolder}`);
+      }
+
+      await fs.access(this.specsFolder, fs.constants.R_OK);
+      
+      return this.specsFolder;
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        throw new Error(`OPENAPI_SPECS_FOLDER does not exist: ${this.specsFolder}`);
+      } else if (error.code === 'EACCES') {
+        throw new Error(`No read permission for OPENAPI_SPECS_FOLDER: ${this.specsFolder}`);
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Load a single OpenAPI specification file from local folder
+   */
+  private async loadSingleLocalSpec(filename: string, specsFolder: string): Promise<void> {
     try {
       const filePath = path.join(specsFolder, filename);
       
@@ -251,7 +462,10 @@ export class OpenAPIAnalyzer {
         spec,
         info: spec.info,
         paths: spec.paths,
-        components: spec.components
+        components: spec.components,
+        source: {
+          type: 'local'
+        }
       });
       
       console.error(`  ✓ Loaded ${filename} (${spec.info?.title || 'Untitled'} v${spec.info?.version || 'unknown'})`);
@@ -271,6 +485,13 @@ export class OpenAPIAnalyzer {
       description: spec.info?.description || 'No description',
       endpointCount: spec.paths ? Object.keys(spec.paths).length : 0
     }));
+  }
+
+  /**
+   * Get information about loaded sources
+   */
+  getLoadedSources(): LoadSource[] {
+    return this.loadedSources;
   }
 
   /**
@@ -536,6 +757,14 @@ const tools: Tool[] = [
       required: ['schema1'],
     },
   },
+  {
+    name: 'get_load_sources',
+    description: 'Get information about where OpenAPI specs were loaded from (discovery URL, individual URLs, or local folder)',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];
 
 // List available tools
@@ -681,6 +910,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ],
         };
 
+      case 'get_load_sources':
+        const sources = analyzer.getLoadedSources();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(sources, null, 2),
+            },
+          ],
+        };
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -700,7 +940,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   try {
     // Validate configuration before starting the server
-    await validateSpecsFolder();
+    await validateConfiguration();
     
     const transport = new StdioServerTransport();
     await server.connect(transport);

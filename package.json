@@ -1,6 +1,6 @@
 {
   "name": "openapi-analyzer-mcp",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A powerful Model Context Protocol (MCP) server for analyzing OpenAPI specifications with Claude Desktop and other LLM clients",
   "type": "module",
   "main": "dist/index.js",
