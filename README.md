@@ -48,7 +48,7 @@ npm run build
      "mcpServers": {
        "openapi-analyzer": {
          "command": "npx",
-         "args": ["openapi-analyzer-mcp"],
+         "args": ["-y", "openapi-analyzer-mcp"],
          "env": {
            "OPENAPI_SPECS_FOLDER": "/absolute/path/to/your/openapi-specs"
          }

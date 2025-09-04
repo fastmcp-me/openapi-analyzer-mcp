@@ -710,7 +710,8 @@ async function main() {
 }
 
 // Only run the server if this file is being executed directly (not imported)
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === `file://${process.argv[1]}` || 
+    process.argv[1]?.includes('openapi-analyzer-mcp')) {
   main().catch((error: any) => {
     console.error(`❌ Unexpected error: ${error.message}`);
     process.exit(1);
