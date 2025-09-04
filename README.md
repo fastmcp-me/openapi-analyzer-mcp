@@ -550,7 +550,7 @@ tests/
 ## 🆕 Changelog
 
 ### Version 1.2.0 - Smart Discovery System
-**Released: January 2025**
+**Released: September 2025**
 
 #### 🎯 Major Features
 - **🚀 Smart Discovery System**: Revolutionary API discovery with priority-based fallback
