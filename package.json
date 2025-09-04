@@ -1,6 +1,6 @@
 {
   "name": "openapi-analyzer-mcp",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "A powerful Model Context Protocol (MCP) server for analyzing OpenAPI specifications with Claude Desktop and other LLM clients",
   "type": "module",
   "main": "dist/index.js",
@@ -23,6 +23,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@apidevtools/swagger-parser": "^12.0.0",
     "@modelcontextprotocol/sdk": "0.5.0"
   },
   "devDependencies": {

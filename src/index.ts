@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs/promises';
 import path from 'path';
+import SwaggerParser from '@apidevtools/swagger-parser';
 
 /**
  * OpenAPI Analyzer MCP Server - A Model Context Protocol server for analyzing OpenAPI specifications
@@ -176,31 +177,35 @@ export class OpenAPIAnalyzer {
     
     try {
       const files = await fs.readdir(validatedFolder);
-      const jsonFiles = files.filter(file => file.endsWith('.json'));
+      const specFiles = files.filter(file => 
+        file.endsWith('.json') || 
+        file.endsWith('.yaml') || 
+        file.endsWith('.yml')
+      );
       
-      if (jsonFiles.length === 0) {
-        console.error(`⚠️  Warning: No .json files found in ${validatedFolder}`);
+      if (specFiles.length === 0) {
+        console.error(`⚠️  Warning: No OpenAPI specification files found in ${validatedFolder}`);
         console.error('');
         console.error('Please ensure your OpenAPI specifications are:');
-        console.error('  - Saved as .json files (not .yaml or .yml)');
+        console.error('  - Saved as .json, .yaml, or .yml files');
         console.error('  - Located in the specified folder');
         console.error('');
-        console.error('If you have YAML files, convert them to JSON first.');
+        console.error('Supported formats: JSON, YAML, YML');
       } else {
-        console.error(`📁 Found ${jsonFiles.length} JSON files in ${validatedFolder}`);
+        console.error(`📁 Found ${specFiles.length} OpenAPI specification files in ${validatedFolder}`);
       }
       
       this.specs = [];
       
-      for (const file of jsonFiles) {
+      for (const file of specFiles) {
         await this.loadSingleSpec(file, validatedFolder);
       }
       
-      if (this.specs.length === 0 && jsonFiles.length > 0) {
+      if (this.specs.length === 0 && specFiles.length > 0) {
         console.error('❌ No valid OpenAPI specifications were loaded');
         console.error('');
         console.error('Common issues:');
-        console.error('  - Files are not valid JSON');
+        console.error('  - Files are not valid JSON, YAML, or YML');
         console.error('  - Files do not contain OpenAPI/Swagger specifications');
         console.error('  - Files are missing "openapi" or "swagger" fields');
       } else {
@@ -218,21 +223,19 @@ export class OpenAPIAnalyzer {
   private async loadSingleSpec(filename: string, specsFolder: string): Promise<void> {
     try {
       const filePath = path.join(specsFolder, filename);
-      const content = await fs.readFile(filePath, 'utf-8');
       
       let spec: Record<string, any>;
       try {
-        spec = JSON.parse(content);
+        // Use Swagger parser to handle JSON/YAML parsing and $ref resolution
+        spec = await SwaggerParser.parse(filePath) as Record<string, any>;
       } catch (parseError) {
-        console.error(`⚠️  Skipping ${filename}: Invalid JSON format`);
+        const fileExt = path.extname(filename);
+        console.error(`⚠️  Skipping ${filename}: Invalid ${fileExt.substring(1).toUpperCase()} format or malformed OpenAPI spec`);
         return;
       }
       
-      // Validate that this looks like an OpenAPI spec
-      if (!spec.openapi && !spec.swagger) {
-        console.error(`⚠️  Skipping ${filename}: Not an OpenAPI/Swagger specification (missing 'openapi' or 'swagger' field)`);
-        return;
-      }
+      // Swagger parser already validates that it's a valid OpenAPI spec
+      // Additional validation is now handled by the parser
       
       // Additional validation for common issues
       if (!spec.info) {

@@ -13,7 +13,7 @@ A powerful **Model Context Protocol (MCP) server** for analyzing OpenAPI specifi
 - **🔧 Inconsistency Detection**: Identify authentication schemes and naming convention mismatches
 - **📋 Schema Comparison**: Compare schemas with the same name across different APIs
 - **⚡ Fast Queries**: In-memory indexing for lightning-fast responses
-- **🌐 Universal Compatibility**: Works with OpenAPI 2.0, 3.0, and 3.1 specifications
+- **🌐 Universal Compatibility**: Works with OpenAPI 2.0, 3.0, and 3.1 specifications in JSON, YAML, and YML formats
 
 ## 🛠 Installation
 
@@ -78,7 +78,7 @@ npm run build
 
 ### Environment Variables
 
-- `OPENAPI_SPECS_FOLDER`: **Required**. Absolute path to the folder containing your OpenAPI JSON files.
+- `OPENAPI_SPECS_FOLDER`: **Required**. Absolute path to the folder containing your OpenAPI specification files (JSON, YAML, or YML).
 
 ## 🎯 Usage
 
