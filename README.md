@@ -1,3 +1,10 @@
+[![Add to Cursor](https://fastmcp.me/badges/cursor_dark.svg)](https://fastmcp.me/MCP/Details/858/openapi-analyzer)
+[![Add to VS Code](https://fastmcp.me/badges/vscode_dark.svg)](https://fastmcp.me/MCP/Details/858/openapi-analyzer)
+[![Add to Claude](https://fastmcp.me/badges/claude_dark.svg)](https://fastmcp.me/MCP/Details/858/openapi-analyzer)
+[![Add to ChatGPT](https://fastmcp.me/badges/chatgpt_dark.svg)](https://fastmcp.me/MCP/Details/858/openapi-analyzer)
+[![Add to Codex](https://fastmcp.me/badges/codex_dark.svg)](https://fastmcp.me/MCP/Details/858/openapi-analyzer)
+[![Add to Gemini](https://fastmcp.me/badges/gemini_dark.svg)](https://fastmcp.me/MCP/Details/858/openapi-analyzer)
+
 # OpenAPI Analyzer MCP Server
 
 [![npm version](https://badge.fury.io/js/openapi-analyzer-mcp.svg)](https://badge.fury.io/js/openapi-analyzer-mcp)
